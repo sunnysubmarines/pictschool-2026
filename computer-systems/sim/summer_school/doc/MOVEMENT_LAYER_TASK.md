@@ -118,65 +118,305 @@ case SCHOOL_CMD_SQUARE: {
 
 Важно: одна школьная команда может разворачиваться в несколько низкоуровневых команд.
 
-## Как проверить
 
-1. Пересоберите supervisor (ВЫПОЛНЯЕТСЯ КНОПКОЙ BUILD-BUILD в webots) либо:
+## 7. Проверить напрямую через консоль без backend
 
-```bash
-make -C computer-systems/sim/summer_school/controllers/supervisor
-```
+Это самая быстрая проверка C-слоя.
 
-2. Перезапустите Webots world.
+1. Запустите Webots world и нажмите `Run`.
 
-3. Запустите backend + bridge:
+2. В отдельном терминале подключитесь к первому роботу:
 
 ```bash
-SIM_DRIVER=webots ./infrastructure/manual/start-backend-ai-stack.sh
+nc localhost 10000
 ```
 
-4. Откройте AI Visualizer:
+3. Отправьте новую команду:
 
 ```text
-http://127.0.0.1:5174/
+20
 ```
 
-5. Нажмите `Connect`, затем `New round`.
+Нажмите Enter.
 
-6. Отправьте команды роботу. В интерфейсе уже есть кнопки для `10`, `11`, `12`, `13`.
+Ожидаемое поведение:
 
-Можно также проверить через curl:
+```text
+robot проезжает квадрат:
+вперед -> направо -> вперед -> направо -> вперед -> направо -> вперед -> направо
+```
+
+В консоли Webots должны появиться сообщения вроде:
+
+```text
+e-puck received commands: 20
+e-puck parsed 8 commands.
+e-puck sent command 1 -> cell (...)
+e-puck turn, new orientation ...
+```
+
+Проверка второго робота:
 
 ```bash
-curl -X POST http://127.0.0.1:8080/api/turn/submit \
-  -H 'Content-Type: application/json' \
-  -d '{"actor":"robot","commands":[10,11,12]}'
+nc localhost 10001
 ```
 
-## Важное ограничение
+Затем снова:
 
-Backend должен пропускать новую команду. Для этого добавьте ее код в allow-list:
+```text
+20
+```
+
+Что важно проговорить:
+
+```text
+Мы сейчас проверили только Webots + C-прослойку.
+Backend и visualizer пока могут не знать про команду 20.
+```
+
+
+
+## 8. Интеграция команды в backend
+
+Чтобы команда дошла из visualizer/backend до симуляции, backend должен ее разрешить.
+
+Откройте:
 
 ```text
 backend/src/main/kotlin/school/pict/backend/RoundEngine.kt
 ```
 
-Backend также должен понимать, какой итог у команды. Сейчас Python-эмулятор в:
+Найдите:
+
+```kotlin
+private val allowedCommands = setOf(1, 2, 3, 4, 10, 11, 12, 13)
+```
+
+Добавьте `20`:
+
+```kotlin
+private val allowedCommands = setOf(1, 2, 3, 4, 10, 11, 12, 13, 20)
+```
+
+Что сказать:
+
+```text
+Backend проверяет команды до отправки в симуляцию.
+Если не добавить 20 сюда, backend вернет unknown_command.
+```
+
+## 9. Интеграция команды в Python-эмулятор результата
+
+Сейчас backend получает JSON-ответ от симуляции через `webots_bridge.py`. Для расчета итоговой позиции bridge использует Python-логику из:
 
 ```text
 simulation-emulator/tcp_emulator.py
 ```
 
-тоже знает про команды `10..13`. Если вы добавляете новую команду, нужно добавить ее и туда, иначе backend и Webots начнут расходиться по состоянию.
+Откройте файл и найдите:
 
-<!-- В будущем, когда будет ESP32-платформа, правильнее будет возвращать фактический результат движения с платформы обратно в backend. Тогда backend не придется заранее знать всю внутреннюю механику сложной команды. -->
+```python
+ALLOWED_COMMANDS = {1, 2, 3, 4, 10, 11, 12, 13}
+COMMAND_EXPANSIONS = {
+    1: [1],
+    2: [2],
+    3: [3],
+    4: [4],
+    10: [1, 1],
+    11: [3, 3],
+    12: [4, 1, 3],
+    13: [3, 1, 4],
+}
+```
 
-## Критерии готовности
+Добавьте команду:
 
-- Новая команда объявлена в `movement_layer.h`.
-- Новая команда реализована в `movement_layer.c`.
-- Supervisor компилируется без ошибок.
-- Backend allow-list содержит новую команду.
-- Python-эмулятор знает, как эта команда влияет на позицию и направление.
-- Команда видна в Webots: робот выполняет ожидаемый маневр.
-- Backend не возвращает `unknown_command`.
-- В AI Visualizer положение робота после хода совпадает с ожидаемым.
+```python
+ALLOWED_COMMANDS = {1, 2, 3, 4, 10, 11, 12, 13, 20}
+COMMAND_EXPANSIONS = {
+    1: [1],
+    2: [2],
+    3: [3],
+    4: [4],
+    10: [1, 1],
+    11: [3, 3],
+    12: [4, 1, 3],
+    13: [3, 1, 4],
+    20: [1, 4, 1, 4, 1, 4, 1, 4],
+}
+```
+
+Здесь используются backend-команды:
+
+```text
+1 — вперед
+4 — поворот вправо
+```
+
+Что сказать:
+
+```text
+Webots выполняет команду через C-слой.
+Backend должен получить такой же итог в своем состоянии.
+Поэтому Python-эмулятор результата должен знать, что команда 20 делает квадрат.
+```
+
+## 10. Интеграция команды в AI Visualizer
+
+Чтобы появилась кнопка:
+
+Откройте:
+
+```text
+ai-visualizer/index.html
+```
+
+В блок кнопок добавьте:
+
+```html
+<button type="button" data-command="20">Square</button>
+```
+
+Откройте:
+
+```text
+ai-visualizer/app.js
+```
+
+В `commandLabels` добавьте:
+
+```js
+20: "SQ",
+```
+
+Пример:
+
+```js
+const commandLabels = {
+  1: "F",
+  2: "B",
+  3: "L",
+  4: "R",
+  10: "F2",
+  11: "U",
+  12: "SR",
+  13: "SL",
+  20: "SQ",
+};
+```
+
+Что сказать:
+
+```text
+Visualizer не знает физику движения.
+Он только отправляет код команды в backend.
+```
+
+## 11. Проверить через backend и bridge
+
+Запустите полную связку по инструкции:
+
+```text
+computer-systems/sim/summer_school/doc/STUDENTS_SETUP.md
+```
+
+Коротко:
+
+Терминал 1:
+
+```bash
+/usr/local/webots/webots computer-systems/sim/summer_school/worlds/summer_school.wbt
+```
+
+В Webots нажать `Run`.
+
+Терминал 2:
+
+```bash
+SIM_DRIVER=webots ./infrastructure/manual/start-backend-ai-stack.sh
+```
+
+Терминал 3:
+
+```bash
+./infrastructure/manual/start-ai-visualizer.sh
+```
+
+Откройте:
+
+```text
+http://127.0.0.1:5174/
+```
+
+Нажмите:
+
+```text
+Connect -> New round
+```
+
+Проверка через curl:
+
+```bash
+curl -X POST http://127.0.0.1:8080/api/turn/submit \
+  -H 'Content-Type: application/json' \
+  -d '{"actor":"robot","commands":[20]}'
+```
+
+Ожидаемый успешный ответ:
+
+```json
+{
+  "accepted": true,
+  "eventId": "event-2",
+  "forwardedAs": "20"
+}
+```
+
+В логах bridge должно быть видно, что команда ушла в Webots:
+
+```text
+webots=20
+```
+
+В Webots должно быть видно выполнение последовательности из 8 низкоуровневых действий.
+
+## 12. Если что-то пошло не так
+
+### Backend вернул `unknown_command`
+
+Проверьте:
+
+```text
+backend/src/main/kotlin/school/pict/backend/RoundEngine.kt
+```
+
+Команда `20` должна быть в `allowedCommands`.
+
+### Webots ничего не делает
+
+Проверьте:
+
+1. Supervisor пересобран.
+2. Webots world перезапущен после сборки.
+3. В `movement_is_supported_command()` есть `SCHOOL_CMD_SQUARE`.
+4. В `movement_expand_command()` есть `case SCHOOL_CMD_SQUARE`.
+
+### Visualizer не показывает кнопку
+
+Проверьте:
+
+1. Кнопка добавлена в `ai-visualizer/index.html`.
+2. Visualizer перезапущен или страница обновлена в браузере.
+3. В `ai-visualizer/app.js` есть label для `20`.
+
+### Backend-состояние расходится с Webots
+
+Проверьте:
+
+```text
+simulation-emulator/tcp_emulator.py
+```
+
+Команда `20` должна быть в `ALLOWED_COMMANDS` и `COMMAND_EXPANSIONS`.
+
+
