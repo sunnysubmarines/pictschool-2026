@@ -20,19 +20,7 @@ AI visualizer :5174 + AI agent
 1. Python 3.
 2. Java/JDK для backend.
 3. Webots R2025a.
-<!-- 4. На Debian Webots обычно установлен в:
 
-```bash
-/usr/local/webots
-```
-
-Проверка:
-
-```bash
-/usr/local/webots/webots --version
-python3 --version
-java -version
-``` -->
 
 ## Подготовка AI env
 
@@ -47,19 +35,7 @@ pip install -r requirements.txt
 
 Файл `ai/.env` должен содержать настройки LLM и backend. 
 
-<!-- Минимально:
 
-```env
-AGENT_BACKEND_URL=http://127.0.0.1:8080
-AGENT_ACTOR_ID=agent
-AGENT_LLM_ENABLED=true
-```
-
-Если LLM пока не нужен или endpoint падает, можно запускать без него:
-
-```bash
-AGENT_LLM_ENABLED=false SIM_DRIVER=webots ./infrastructure/manual/start-backend-ai-stack.sh
-``` -->
 
 ## Шаг 1. Запустить Webots
 
@@ -101,11 +77,7 @@ computer-systems/sim/summer_school/worlds/summer_school.wbt
 
 ### Windows
 
-<!-- В PowerShell из корня проекта:
 
-```powershell
-& "C:\Program Files\Webots\msys64\mingw64\bin\webots.exe" "computer-systems\sim\summer_school\worlds\summer_school.wbt"
-``` -->
 
 Если путь не сработал, откройте Webots через меню Windows, затем:
 
