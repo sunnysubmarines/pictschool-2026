@@ -70,10 +70,10 @@ float forwardDistanceCm = 20.0;
 float backwardDistanceCm = 20.0;
 float TICKS_PER_CM = 2.0;
 
-unsigned long leftTurnTimeMs = 600;
-unsigned long rightTurnTimeMs = 600;
+long leftTurnTicks = 30;
+long rightTurnTicks = 30;
 unsigned long moveStartMs = 0;
-unsigned long activeTurnTimeMs = 600;
+const unsigned long TURN_SAFETY_TIMEOUT_MS = 5000;
 
 long targetTicks = 0;
 long lastLeftTicks = 0;
@@ -138,8 +138,8 @@ void loadCalibration() {
   forwardDistanceCm = preferences.getFloat("fdist", forwardDistanceCm);
   backwardDistanceCm = preferences.getFloat("bdist", backwardDistanceCm);
   TICKS_PER_CM = preferences.getFloat("tpcm", TICKS_PER_CM);
-  leftTurnTimeMs = preferences.getULong("lturn", leftTurnTimeMs);
-  rightTurnTimeMs = preferences.getULong("rturn", rightTurnTimeMs);
+  leftTurnTicks = preferences.getLong("lticks", leftTurnTicks);
+  rightTurnTicks = preferences.getLong("rticks", rightTurnTicks);
   pidKp = preferences.getFloat("kp", pidKp);
   pidKi = preferences.getFloat("ki", pidKi);
   pidKd = preferences.getFloat("kd", pidKd);
@@ -153,8 +153,8 @@ void loadCalibration() {
   forwardDistanceCm = constrain(forwardDistanceCm, 0.5, 300.0);
   backwardDistanceCm = constrain(backwardDistanceCm, 0.5, 300.0);
   TICKS_PER_CM = constrain(TICKS_PER_CM, 0.1, 200.0);
-  leftTurnTimeMs = constrain((int)leftTurnTimeMs, 50, 5000);
-  rightTurnTimeMs = constrain((int)rightTurnTimeMs, 50, 5000);
+  leftTurnTicks = constrain(leftTurnTicks, 1L, 2000L);
+  rightTurnTicks = constrain(rightTurnTicks, 1L, 2000L);
   pidKp = constrain(pidKp, 0.0, 10.0);
   pidKi = constrain(pidKi, 0.0, 10.0);
   pidKd = constrain(pidKd, 0.0, 10.0);
@@ -170,8 +170,8 @@ void saveCalibration() {
   preferences.putFloat("fdist", forwardDistanceCm);
   preferences.putFloat("bdist", backwardDistanceCm);
   preferences.putFloat("tpcm", TICKS_PER_CM);
-  preferences.putULong("lturn", leftTurnTimeMs);
-  preferences.putULong("rturn", rightTurnTimeMs);
+  preferences.putLong("lticks", leftTurnTicks);
+  preferences.putLong("rticks", rightTurnTicks);
   preferences.putFloat("kp", pidKp);
   preferences.putFloat("ki", pidKi);
   preferences.putFloat("kd", pidKd);
@@ -335,7 +335,7 @@ void startTurn(MoveMode mode) {
   resetEncoders();
 
   moveStartMs = millis();
-  activeTurnTimeMs = mode == LEFT ? leftTurnTimeMs : rightTurnTimeMs;
+  targetTicks = mode == LEFT ? leftTurnTicks : rightTurnTicks;
 
   currentLeftPwm = 0;
   currentRightPwm = 0;
@@ -358,7 +358,7 @@ void startTurn(MoveMode mode) {
 }
 
 void updateEncoderControl() {
-  if (currentMode != FORWARD && currentMode != BACKWARD) return;
+  if (currentMode != FORWARD && currentMode != BACKWARD && currentMode != LEFT && currentMode != RIGHT) return;
   if (smoothStopping) return;
   if (millis() - lastControlTime < 100) return;
 
@@ -372,8 +372,16 @@ void updateEncoderControl() {
   interrupts();
 
   long avgTicks = (l + r) / 2;
+  long minTicks = min(l, r);
 
-  if (millis() - moveStartMs >= ENCODER_STARTUP_IGNORE_MS && avgTicks >= targetTicks) {
+  bool targetReached = false;
+  if (currentMode == FORWARD || currentMode == BACKWARD) {
+    targetReached = avgTicks >= targetTicks;
+  } else {
+    targetReached = minTicks >= targetTicks;
+  }
+
+  if (millis() - moveStartMs >= ENCODER_STARTUP_IGNORE_MS && targetReached) {
     stopCurrentMotionNow();
     Serial.print("Target reached: L=");
     Serial.print(l);
@@ -381,6 +389,8 @@ void updateEncoderControl() {
     Serial.print(r);
     Serial.print(" avg=");
     Serial.print(avgTicks);
+    Serial.print(" min=");
+    Serial.print(minTicks);
     Serial.print(" target=");
     Serial.println(targetTicks);
     return;
@@ -413,8 +423,9 @@ void updateTurnControl() {
   if (currentMode != LEFT && currentMode != RIGHT) return;
   if (smoothStopping) return;
 
-  if (millis() - moveStartMs >= activeTurnTimeMs) {
+  if (millis() - moveStartMs >= TURN_SAFETY_TIMEOUT_MS) {
     stopCurrentMotionNow();
+    Serial.println("Turn safety timeout");
   }
 }
 
@@ -997,10 +1008,10 @@ String statusJson() {
   result += String(TICKS_PER_CM);
   result += ",\"targetTicks\":";
   result += String(targetTicks);
-  result += ",\"leftTurnTimeMs\":";
-  result += String(leftTurnTimeMs);
-  result += ",\"rightTurnTimeMs\":";
-  result += String(rightTurnTimeMs);
+  result += ",\"leftTurnTicks\":";
+  result += String(leftTurnTicks);
+  result += ",\"rightTurnTicks\":";
+  result += String(rightTurnTicks);
   result += ",\"leftTrim\":";
   result += String(leftTrim);
   result += ",\"rightTrim\":";
@@ -1065,12 +1076,12 @@ String page() {
       <input id="ticksPerCmInput" type="number" min="0.1" max="200" step="0.1" value="2" onchange="param('ticksPerCm', this.value, 'ticksPerCmLabel')">
     </div>
     <div class="field">
-      <p>Left turn time <span id="leftTurnLabel">600</span> ms</p>
-      <input id="leftTurnInput" type="number" min="50" max="5000" step="10" value="600" onchange="param('leftTurnTime', this.value, 'leftTurnLabel')">
+      <p>Left 90 turn ticks <span id="leftTurnLabel">30</span></p>
+      <input id="leftTurnInput" type="number" min="1" max="2000" step="1" value="30" onchange="param('leftTurnTicks', this.value, 'leftTurnLabel')">
     </div>
     <div class="field">
-      <p>Right turn time <span id="rightTurnLabel">600</span> ms</p>
-      <input id="rightTurnInput" type="number" min="50" max="5000" step="10" value="600" onchange="param('rightTurnTime', this.value, 'rightTurnLabel')">
+      <p>Right 90 turn ticks <span id="rightTurnLabel">30</span></p>
+      <input id="rightTurnInput" type="number" min="1" max="2000" step="1" value="30" onchange="param('rightTurnTicks', this.value, 'rightTurnLabel')">
     </div>
     <div class="field">
       <p>Left trim <span id="leftTrimLabel">0</span></p>
@@ -1125,8 +1136,8 @@ String page() {
       syncControl('forwardDistanceInput', 'forwardDistanceLabel', Number(status.forwardDistanceCm).toFixed(1));
       syncControl('backwardDistanceInput', 'backwardDistanceLabel', Number(status.backwardDistanceCm).toFixed(1));
       syncControl('ticksPerCmInput', 'ticksPerCmLabel', Number(status.ticksPerCm).toFixed(2));
-      syncControl('leftTurnInput', 'leftTurnLabel', status.leftTurnTimeMs);
-      syncControl('rightTurnInput', 'rightTurnLabel', status.rightTurnTimeMs);
+      syncControl('leftTurnInput', 'leftTurnLabel', status.leftTurnTicks);
+      syncControl('rightTurnInput', 'rightTurnLabel', status.rightTurnTicks);
       syncControl('leftTrimInput', 'leftTrimLabel', status.leftTrim);
       syncControl('rightTrimInput', 'rightTrimLabel', status.rightTrim);
       syncControl('rampStepInput', 'rampStepLabel', status.rampStep);
@@ -1206,8 +1217,8 @@ void setupHttpServer() {
     forwardDistanceCm = 20.0;
     backwardDistanceCm = 20.0;
     TICKS_PER_CM = 2.0;
-    leftTurnTimeMs = 600;
-    rightTurnTimeMs = 600;
+    leftTurnTicks = 30;
+    rightTurnTicks = 30;
     pidKp = 0.80;
     pidKi = 0.00;
     pidKd = 0.20;
@@ -1231,16 +1242,16 @@ void setupHttpServer() {
       forwardDistanceCm = value;
       backwardDistanceCm = value;
     }
-    if (httpServer.hasArg("leftTurnTime")) {
-      leftTurnTimeMs = constrain(httpServer.arg("leftTurnTime").toInt(), 50, 5000);
+    if (httpServer.hasArg("leftTurnTicks")) {
+      leftTurnTicks = constrain(httpServer.arg("leftTurnTicks").toInt(), 1, 2000);
     }
-    if (httpServer.hasArg("rightTurnTime")) {
-      rightTurnTimeMs = constrain(httpServer.arg("rightTurnTime").toInt(), 50, 5000);
+    if (httpServer.hasArg("rightTurnTicks")) {
+      rightTurnTicks = constrain(httpServer.arg("rightTurnTicks").toInt(), 1, 2000);
     }
-    if (httpServer.hasArg("turnTime")) {
-      unsigned long value = constrain(httpServer.arg("turnTime").toInt(), 50, 5000);
-      leftTurnTimeMs = value;
-      rightTurnTimeMs = value;
+    if (httpServer.hasArg("turnTicks")) {
+      long value = constrain(httpServer.arg("turnTicks").toInt(), 1, 2000);
+      leftTurnTicks = value;
+      rightTurnTicks = value;
     }
     if (httpServer.hasArg("ticksPerCm")) {
       TICKS_PER_CM = constrain(httpServer.arg("ticksPerCm").toFloat(), 0.1, 200.0);

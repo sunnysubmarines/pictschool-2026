@@ -67,7 +67,19 @@ button {
   display: flex;
   gap: 14px;
   flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.positions {
+  display: grid;
+  gap: 4px;
   margin-bottom: 16px;
+  color: #cbd5e1;
+  line-height: 1.35;
+}
+
+.positions strong {
+  color: #f8fafc;
 }
 
 .layout {
@@ -84,7 +96,21 @@ button {
   border-radius: 12px;
 }
 
+.coord-header {
+  min-height: 24px;
+  display: grid;
+  place-items: center;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.row-header {
+  min-height: 40px;
+}
+
 .cell {
+  position: relative;
   min-height: 40px;
   border-radius: 6px;
   border: 1px solid #334155;
@@ -92,6 +118,19 @@ button {
   place-items: center;
   font-size: 12px;
   background: #0b1220;
+}
+
+.cell-coord {
+  position: absolute;
+  top: 3px;
+  left: 4px;
+  color: #64748b;
+  font-size: 9px;
+  line-height: 1;
+}
+
+.cell-content {
+  font-weight: 700;
 }
 
 .panel, .events, .agent-debug {

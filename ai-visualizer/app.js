@@ -24,6 +24,10 @@ const els = {
   robotScore: document.getElementById("robotScore"),
   agentScore: document.getElementById("agentScore"),
   ducksLeft: document.getElementById("ducksLeft"),
+  robotPosition: document.getElementById("robotPosition"),
+  agentPosition: document.getElementById("agentPosition"),
+  duckPositions: document.getElementById("duckPositions"),
+  obstaclePositions: document.getElementById("obstaclePositions"),
   agentState: document.getElementById("agentState"),
   agentSource: document.getElementById("agentSource"),
   agentModel: document.getElementById("agentModel"),
@@ -63,6 +67,10 @@ function renderSummary() {
     els.robotScore.textContent = "0";
     els.agentScore.textContent = "0";
     els.ducksLeft.textContent = "-";
+    els.robotPosition.textContent = "-";
+    els.agentPosition.textContent = "-";
+    els.duckPositions.textContent = "-";
+    els.obstaclePositions.textContent = "-";
     return;
   }
   els.turnNumber.textContent = String(state.round.turnNumber);
@@ -70,18 +78,98 @@ function renderSummary() {
   els.robotScore.textContent = String(state.round.score.robot);
   els.agentScore.textContent = String(state.round.score.agent);
   els.ducksLeft.textContent = `${state.round.ducksLeft}/${state.round.ducksTotal}`;
+  els.robotPosition.textContent = actorPositionText(currentActorState("robot"));
+  els.agentPosition.textContent = actorPositionText(currentActorState("agent"));
+  els.duckPositions.textContent = duckPositionsText(state.round.field.ducks);
+  els.obstaclePositions.textContent = positionsText(state.round.field.obstacles);
 }
 
 function samePosition(a, b) {
   return a.x === b.x && a.y === b.y;
 }
 
+function boardColumnLabel(x) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  if (x < alphabet.length) return alphabet[x];
+  return `C${x + 1}`;
+}
+
+function boardRowLabel(y) {
+  return String(y + 1);
+}
+
+function boardCellLabel(position) {
+  return `${boardColumnLabel(position.x)}${boardRowLabel(position.y)}`;
+}
+
+function actorPositionText(actor) {
+  if (!actor?.position) return "-";
+  const { x, y } = actor.position;
+  return `${boardCellLabel(actor.position)} / x=${x}, y=${y}, dir=${actor.direction}`;
+}
+
+function positionText(position) {
+  if (!position) return "-";
+  return `${boardCellLabel(position)}(x=${position.x},y=${position.y})`;
+}
+
+function positionsText(items) {
+  if (!items?.length) return "-";
+  return items.map((item) => positionText(item.position || item)).join("; ");
+}
+
+function duckPositionsText(ducks) {
+  if (!ducks?.length) return "-";
+  return ducks
+    .map((duck) => {
+      const status = duck.collectedBy ? ` -> ${duck.collectedBy}` : "";
+      return `${duck.id}: ${positionText(duck.position)}${status}`;
+    })
+    .join("; ");
+}
+
+function latestMovedActorState(actorName) {
+  for (let index = state.events.length - 1; index >= 0; index -= 1) {
+    const event = state.events[index];
+    if (event.type !== "actor.moved" || event.actor !== actorName) continue;
+    const payload = event.payload || {};
+    if (!payload.finalPosition) continue;
+    return {
+      id: actorName,
+      position: payload.finalPosition,
+      direction: payload.finalDirection || "?",
+    };
+  }
+  return null;
+}
+
+function currentActorState(actorName) {
+  return state.round?.actors?.[actorName] || latestMovedActorState(actorName);
+}
+
 function renderBoard() {
   els.board.innerHTML = "";
   if (!state.round) return;
   const { width, height, ducks, obstacles } = state.round.field;
-  els.board.style.gridTemplateColumns = `repeat(${width}, minmax(34px, 1fr))`;
+  els.board.style.gridTemplateColumns = `28px repeat(${width}, minmax(34px, 1fr))`;
+
+  const corner = document.createElement("div");
+  corner.className = "coord-header coord-corner";
+  els.board.append(corner);
+
+  for (let x = 0; x < width; x += 1) {
+    const header = document.createElement("div");
+    header.className = "coord-header";
+    header.textContent = boardColumnLabel(x);
+    els.board.append(header);
+  }
+
   for (let y = 0; y < height; y += 1) {
+    const rowHeader = document.createElement("div");
+    rowHeader.className = "coord-header row-header";
+    rowHeader.textContent = boardRowLabel(y);
+    els.board.append(rowHeader);
+
     for (let x = 0; x < width; x += 1) {
       const cell = document.createElement("div");
       cell.className = "cell";
@@ -98,7 +186,17 @@ function renderBoard() {
       } else if (ducks.some((d) => !d.collectedBy && samePosition(d.position, pos))) {
         mark = "D";
       }
-      cell.textContent = mark;
+
+      const coord = document.createElement("span");
+      coord.className = "cell-coord";
+      coord.textContent = boardCellLabel(pos);
+      cell.append(coord);
+
+      const content = document.createElement("span");
+      content.className = "cell-content";
+      content.textContent = mark;
+      cell.append(content);
+
       els.board.append(cell);
     }
   }

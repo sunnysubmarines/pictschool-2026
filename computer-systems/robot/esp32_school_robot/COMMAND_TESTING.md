@@ -136,10 +136,10 @@ ERR unknown_command
 
 - `forward` использует `Forward distance`, `Ticks/cm`, `Speed`, `trim`;
 - `backward` использует `Back distance`, `Ticks/cm`, `Speed`, `trim`;
-- `turn left` использует `Left turn time`, `Speed`, `trim`;
-- `turn right` использует `Right turn time`, `Speed`, `trim`.
+- `turn left` использует `Left 90 turn ticks`, `Speed`, `trim`, PID;
+- `turn right` использует `Right 90 turn ticks`, `Speed`, `trim`, PID.
 
-Команды из `movement_layer.c` используют эти низкоуровневые движения. Поэтому если вы настроили `Forward distance` или `Left turn time` в web UI, эти настройки будут использоваться и для:
+Команды из `movement_layer.c` используют эти низкоуровневые движения. Поэтому если вы настроили `Forward distance` или `Left 90 turn ticks` в web UI, эти настройки будут использоваться и для:
 
 - команд из `nc`;
 - команд из backend;
@@ -149,7 +149,7 @@ ERR unknown_command
 ## Быстрый чек-лист
 
 1. Открыть `http://<ESP32_IP>/`.
-2. Настроить `Forward distance`, `Back distance`, `Left turn time`, `Right turn time`.
+2. Настроить `Forward distance`, `Back distance`, `Left 90 turn ticks`, `Right 90 turn ticks`.
 3. Нажать `Forward`, `Back`, `Left`, `Right` на странице.
 4. Проверить одиночные команды через `nc`: `1`, `2`, `3`, `4`.
 5. Проверить цепочку простых команд через `nc`, например `1 3 1`.

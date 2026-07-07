@@ -100,14 +100,14 @@ http://<ESP32_IP>/
 | `Forward distance` | расстояние для команды вперед |
 | `Back distance` | расстояние для команды назад |
 | `Ticks/cm` | калибровка энкодеров |
-| `Left turn time` | время поворота влево |
-| `Right turn time` | время поворота вправо |
+| `Left 90 turn ticks` | количество тиков энкодеров для поворота влево на 90 градусов |
+| `Right 90 turn ticks` | количество тиков энкодеров для поворота вправо на 90 градусов |
 | `Left trim` | поправка PWM левого мотора |
 | `Right trim` | поправка PWM правого мотора |
 | `Ramp step` | резкость разгона/торможения |
 | `Ramp interval` | интервал изменения PWM |
 
-Если поворот влево и вправо отличаются, меняйте `Left turn time` и `Right turn time` отдельно. Если назад едет больше/меньше, чем вперед, меняйте `Back distance` отдельно от `Forward distance`.
+Если поворот влево и вправо отличаются, меняйте `Left 90 turn ticks` и `Right 90 turn ticks` отдельно. Если назад едет больше/меньше, чем вперед, меняйте `Back distance` отдельно от `Forward distance`.
 
 Все значения, введенные на HTTP-странице, сохраняются во flash-память ESP32 через `Preferences`. После перезагрузки ESP32 калибровка загружается автоматически.
 
@@ -115,8 +115,8 @@ http://<ESP32_IP>/
 
 - `forward` использует `Forward distance`, `Ticks/cm`, `Speed`, `trim`;
 - `backward` использует `Back distance`, `Ticks/cm`, `Speed`, `trim`;
-- `turn left` использует `Left turn time`;
-- `turn right` использует `Right turn time`.
+- `turn left` использует `Left 90 turn ticks`, `Speed`, `trim`, PID;
+- `turn right` использует `Right 90 turn ticks`, `Speed`, `trim`, PID.
 
 Поэтому эти же настройки используются для команд из backend, AI visualizer, AI agent и комплексных команд из `movement_layer.c`.
 
@@ -321,6 +321,6 @@ newTicksPerCm = 20 * 5 / 50 = 2
 
 Значение `Ticks/cm` можно менять на HTTP-странице ESP32.
 
-Для настройки назад используйте `Back distance`. Для настройки поворотов используйте `Left turn time` и `Right turn time`: увеличивайте время, если поворот недокручивает, и уменьшайте, если перекручивает.
+Для настройки назад используйте `Back distance`. Для настройки поворотов используйте `Left 90 turn ticks` и `Right 90 turn ticks`: увеличивайте количество тиков, если поворот недокручивает, и уменьшайте, если перекручивает.
 
 Калибровка сохраняется на самой ESP32. После настройки не нужно заново вводить значения перед запуском backend/AI visualizer.
