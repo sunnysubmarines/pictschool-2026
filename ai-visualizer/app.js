@@ -5,10 +5,17 @@ const state = {
   queue: [],
   source: null,
   pollTimer: null,
+  targets: null,
+  agentStatus: null,
 };
 
 const els = {
   backendUrl: document.getElementById("backendUrl"),
+  robotEspIp: document.getElementById("robotEspIp"),
+  agentEspIp: document.getElementById("agentEspIp"),
+  saveTargetsButton: document.getElementById("saveTargetsButton"),
+  testTargetsButton: document.getElementById("testTargetsButton"),
+  fallbackToggle: document.getElementById("fallbackToggle"),
   connectButton: document.getElementById("connectButton"),
   startRoundButton: document.getElementById("startRoundButton"),
   status: document.getElementById("status"),
@@ -17,6 +24,13 @@ const els = {
   robotScore: document.getElementById("robotScore"),
   agentScore: document.getElementById("agentScore"),
   ducksLeft: document.getElementById("ducksLeft"),
+  agentState: document.getElementById("agentState"),
+  agentSource: document.getElementById("agentSource"),
+  agentModel: document.getElementById("agentModel"),
+  agentCommands: document.getElementById("agentCommands"),
+  agentRationale: document.getElementById("agentRationale"),
+  agentError: document.getElementById("agentError"),
+  agentHint: document.getElementById("agentHint"),
   board: document.getElementById("board"),
   queue: document.getElementById("queue"),
   undoButton: document.getElementById("undoButton"),
@@ -95,10 +109,6 @@ const commandLabels = {
   2: "B",
   3: "L",
   4: "R",
-  10: "F2",
-  11: "U",
-  12: "SR",
-  13: "SL",
 };
 
 function renderQueue() {
@@ -113,6 +123,43 @@ function renderQueue() {
   els.submitButton.disabled = !robotTurn || state.queue.length === 0;
 }
 
+function renderAgentStatus() {
+  const status = state.agentStatus;
+  if (!status) {
+    els.agentState.textContent = "not_connected";
+    els.agentSource.textContent = "-";
+    els.agentModel.textContent = "-";
+    els.agentCommands.textContent = "-";
+    els.agentRationale.textContent = "AI agent has not reported yet.";
+    els.agentError.textContent = "Start it with ./infrastructure/manual/start-ai-agent.sh";
+    els.agentHint.textContent = "";
+    return;
+  }
+
+  const updatedAtMs = status.updatedAt ? Date.parse(status.updatedAt) : NaN;
+  const stale = Number.isFinite(updatedAtMs) && Date.now() - updatedAtMs > 6000;
+  els.agentState.textContent = `${status.state || "unknown"}${stale ? " (stale)" : ""}`;
+  els.agentSource.textContent = status.source || "-";
+  els.agentModel.textContent = status.model || "-";
+  els.agentCommands.textContent = (status.commands || []).join(" ") || "-";
+  els.agentRationale.textContent = status.rationale || "No rationale.";
+  els.agentError.textContent = stale
+    ? `Agent status is old. Last update: ${status.updatedAt}. Check the Python agent process.`
+    : status.error || "";
+
+  const hints = [];
+  if (state.round?.status === "running" && state.round.activeActor === "robot") {
+    hints.push("Now it is robot turn. Submit robot turn first; then AI agent can move.");
+  }
+  if (state.targets?.robot?.host && state.targets?.agent?.host && state.targets.robot.host === state.targets.agent.host) {
+    hints.push("Robot ESP IP and Agent ESP IP are the same. This is OK only if that ESP is flashed as the active actor; for two physical platforms use two different IPs.");
+  }
+  if (status.state === "not_connected") {
+    hints.push("Run the Python agent service: ./infrastructure/manual/start-ai-agent.sh");
+  }
+  els.agentHint.textContent = hints.join(" ");
+}
+
 function renderEvents() {
   els.eventLog.innerHTML = "";
   state.events
@@ -120,9 +167,29 @@ function renderEvents() {
     .reverse()
     .forEach((event) => {
       const li = document.createElement("li");
-      li.textContent = `${event.type} (turn ${event.turnNumber}${event.actor ? `, ${event.actor}` : ""})`;
+      const details = eventDetails(event);
+      li.textContent =
+        `${event.type} (turn ${event.turnNumber}${event.actor ? `, ${event.actor}` : ""})` +
+        `${details ? `: ${details}` : ""}`;
       els.eventLog.append(li);
     });
+}
+
+function eventDetails(event) {
+  const payload = event.payload || {};
+  if (event.type === "turn.failed") {
+    return payload.error || payload.cause || "";
+  }
+  if (event.type === "simulation.command_sent") {
+    return `${payload.actor || event.actor || "?"} -> ${payload.host || "?"}:${payload.port || "?"}, payload=${payload.tcpPayload || "-"}`;
+  }
+  if (event.type === "simulation.fallback_used") {
+    return `local movement fallback, cause=${payload.cause || "unknown"}`;
+  }
+  if (event.type === "turn.submitted") {
+    return payload.commands || "";
+  }
+  return "";
 }
 
 function renderMoves() {
@@ -156,15 +223,68 @@ function renderAll() {
   renderSummary();
   renderBoard();
   renderQueue();
+  renderAgentStatus();
   renderEvents();
   renderMoves();
 }
 
 async function refreshState() {
-  const [roundPayload, eventsPayload] = await Promise.all([api("/api/round"), api("/api/events")]);
+  const [roundPayload, eventsPayload, agentStatus] = await Promise.all([
+    api("/api/round"),
+    api("/api/events"),
+    api("/api/ai/agent/status").catch(() => null),
+  ]);
   state.round = roundPayload.round;
   state.events = eventsPayload.events || [];
+  state.agentStatus = agentStatus;
   renderAll();
+}
+
+function renderTargets() {
+  if (!state.targets) return;
+  els.robotEspIp.value = state.targets.robot?.host || "";
+  els.agentEspIp.value = state.targets.agent?.host || "";
+}
+
+async function refreshTargets() {
+  const [targets, fallback] = await Promise.all([
+    api("/api/simulation/targets"),
+    api("/api/simulation/fallback").catch(() => ({ enabled: false })),
+  ]);
+  state.targets = targets;
+  els.fallbackToggle.checked = Boolean(fallback.enabled);
+  renderTargets();
+}
+
+async function saveTargets() {
+  const robotHost = els.robotEspIp.value.trim();
+  const agentHost = els.agentEspIp.value.trim();
+  state.targets = await api("/api/simulation/targets", {
+    method: "POST",
+    body: JSON.stringify({
+      robot: { host: robotHost, port: 5055 },
+      agent: { host: agentHost, port: 5055 },
+    }),
+  });
+  renderTargets();
+  els.status.textContent = "ESP IPs saved";
+}
+
+async function testTargets() {
+  const result = await api("/api/simulation/targets/check");
+  const format = (name, item) => `${name} ${item.host}:${item.port} ${item.ok ? "OK" : `FAIL (${item.error || "unknown"})`}`;
+  els.status.textContent = `${format("robot", result.robot)}; ${format("agent", result.agent)}`;
+}
+
+async function setFallback(enabled) {
+  const result = await api("/api/simulation/fallback", {
+    method: "POST",
+    body: JSON.stringify({ enabled }),
+  });
+  els.fallbackToggle.checked = Boolean(result.enabled);
+  els.status.textContent = result.enabled
+    ? "Local fallback enabled: failed ESP moves will be simulated locally"
+    : "Local fallback disabled";
 }
 
 function connectSse() {
@@ -194,6 +314,7 @@ function startPolling() {
 
 async function connect() {
   state.backendUrl = els.backendUrl.value.replace(/\/$/, "");
+  await refreshTargets();
   await refreshState();
   connectSse();
   startPolling();
@@ -238,6 +359,22 @@ els.clearButton.addEventListener("click", () => {
 els.submitButton.addEventListener("click", () => {
   submitRobotTurn().catch((error) => {
     els.status.textContent = error?.error?.message || "Submit error";
+  });
+});
+els.saveTargetsButton.addEventListener("click", () => {
+  saveTargets().catch((error) => {
+    els.status.textContent = error?.error?.message || "Save ESP IPs error";
+  });
+});
+els.testTargetsButton.addEventListener("click", () => {
+  testTargets().catch((error) => {
+    els.status.textContent = error?.error?.message || "Test ESPs error";
+  });
+});
+els.fallbackToggle.addEventListener("change", () => {
+  setFallback(els.fallbackToggle.checked).catch((error) => {
+    els.status.textContent = error?.error?.message || "Fallback toggle error";
+    els.fallbackToggle.checked = !els.fallbackToggle.checked;
   });
 });
 els.connectButton.addEventListener("click", () => {

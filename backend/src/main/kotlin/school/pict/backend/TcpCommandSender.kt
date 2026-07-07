@@ -9,11 +9,15 @@ interface TcpCommandSender {
     fun send(request: SimulationCommandRequest): Result<SimulationCommandResult>
 }
 
-class SocketTcpCommandSender(private val config: AppConfig) : TcpCommandSender {
+class SocketTcpCommandSender(
+    private val config: AppConfig,
+    private val targets: SimulationTargets = SimulationTargets(config)
+) : TcpCommandSender {
     override fun send(request: SimulationCommandRequest): Result<SimulationCommandResult> = runCatching {
         val payload = backendJson.encodeToString(request)
+        val target = targets.forActor(request.actor)
         Socket().use { socket ->
-            socket.connect(InetSocketAddress(config.simTcpHost, config.simTcpCommandPort), config.simTcpTimeoutMillis)
+            socket.connect(InetSocketAddress(target.host, target.port), config.simTcpTimeoutMillis)
             socket.soTimeout = config.simTcpTimeoutMillis
 
             val output = socket.getOutputStream()
@@ -22,7 +26,7 @@ class SocketTcpCommandSender(private val config: AppConfig) : TcpCommandSender {
             output.flush()
             socket.shutdownOutput()
 
-            val response = socket.getInputStream().bufferedReader().readText().trim()
+            val response = socket.getInputStream().bufferedReader().readLine()?.trim().orEmpty()
             require(response.isNotBlank()) {
                 "Симуляция закрыла соединение без ответа."
             }

@@ -47,7 +47,49 @@ cp .env.example .env
 
 Если `OPENAI_API_KEY` не задан, агент автоматически переходит в детерминированный fallback.
 
+## Отладка в AI Visualizer
+
+В `AI Visualizer` есть блок `AI Agent`:
+
+- `Status` — текущее состояние агента;
+- `Source` — `llm`, если ход пришел от языковой модели, или `fallback`, если сработал запасной алгоритм;
+- `Model` — модель из `AGENT_LLM_MODEL`;
+- `Commands` — команды, которые агент выбрал;
+- `Rationale` — объяснение выбора;
+- красная строка ошибки — причина, почему LLM/backend не сработали.
+
+Типичные состояния:
+
+| Status | Значение |
+| --- | --- |
+| `waiting` | Агент запущен, но сейчас ходит не `agent` или раунд не `running` |
+| `planning` | Агент увидел свой ход и вызывает planner/LLM |
+| `planned` | Команды выбраны, но еще не отправлены |
+| `submitted` | Команды отправлены в backend |
+| `backend_error` | Backend отказал, часто из-за недоступной ESP или неверного IP |
+| `agent_error` | Ошибка внутри Python-агента |
+
+Если `Source = fallback`, смотрите красную строку ошибки. Частые причины:
+
+- не задан `OPENAI_API_KEY`;
+- `OPENAI_BASE_URL` недоступен;
+- выбранная OpenAI-compatible платформа не поддерживает `response_format=json_schema`.
+
+Агент сначала пробует structured output через `json_schema`. Если провайдер его не поддерживает, агент автоматически повторяет запрос как обычный JSON.
+
+Если `Status = submitted`, но физическая вторая платформа не едет, проверьте:
+
+- в visualizer поле `Agent ESP IP`;
+- на второй ESP в `esp32_school_robot.ino` должно быть `const char* DEVICE_ACTOR = "agent";`;
+- backend должен видеть второй IP через `/api/simulation/targets`.
+
 ## Запуск
+
+Обычный запуск отдельного AI agent:
+
+```bash
+./infrastructure/manual/start-ai-agent.sh
+```
 
 Один цикл:
 
@@ -80,4 +122,3 @@ python -m agent_service --max-iterations 20
 ```
 
 После запуска откройте `http://127.0.0.1:5174`.
-

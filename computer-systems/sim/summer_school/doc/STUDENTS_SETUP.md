@@ -77,9 +77,15 @@ computer-systems/sim/summer_school/worlds/summer_school.wbt
 
 ### Windows
 
+Откройте PowerShell в корне проекта.
 
+Если Webots установлен в стандартную папку:
 
-Если путь не сработал, откройте Webots через меню Windows, затем:
+```powershell
+& "C:\Program Files\Webots\msys64\mingw64\bin\webots.exe" "computer-systems\sim\summer_school\worlds\summer_school.wbt"
+```
+
+Если команда не сработала, откройте Webots через меню Windows, затем:
 
 ```text
 File -> Open World...
@@ -89,6 +95,63 @@ File -> Open World...
 
 ```text
 computer-systems\sim\summer_school\worlds\summer_school.wbt
+```
+
+Перед запуском проверьте две вещи.
+
+1. В `computer-systems\sim\summer_school\worlds\summer_school.wbt` строка с уткой должна быть относительной:
+
+```webots
+IMPORTABLE EXTERNPROTO "RubberDuck.proto"
+```
+
+Файл `RubberDuck.proto` и папка `RubberDuck` должны лежать рядом с `summer_school.wbt`.
+
+2. Если контроллер Webots пишет `can't create build/release/...`, создайте папки:
+
+```powershell
+New-Item -ItemType Directory -Force "computer-systems\sim\summer_school\controllers\epuck_controller\build\release"
+New-Item -ItemType Directory -Force "computer-systems\sim\summer_school\controllers\supervisor\build\release"
+```
+
+Собрать контроллеры из PowerShell можно так:
+
+```powershell
+make -C "computer-systems\sim\summer_school\controllers\epuck_controller"
+make -C "computer-systems\sim\summer_school\controllers\supervisor"
+```
+
+Если `make` не найден, собирайте контроллеры кнопкой Build в Webots или запустите команды из Webots/MinGW shell.
+
+Для backend + AI + visualizer на Windows удобнее запускать компоненты отдельно.
+
+Терминал 1, backend:
+
+```powershell
+cd backend
+.\gradlew.bat run
+```
+
+Терминал 2, AI agent:
+
+```powershell
+cd ai
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python -m agent_service
+```
+
+Терминал 3, AI visualizer:
+
+```powershell
+python -m http.server 5174 --bind 127.0.0.1 --directory ai-visualizer
+```
+
+Откройте в браузере:
+
+```text
+http://127.0.0.1:5174/
 ```
 
 После открытия мира в Webots нажмите кнопку `Run`.

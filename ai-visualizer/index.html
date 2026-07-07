@@ -15,6 +15,22 @@
         <button id="connectButton" type="button">Connect</button>
         <button id="startRoundButton" type="button">New round</button>
       </div>
+      <div class="controls target-controls">
+        <label>
+          Robot ESP IP
+          <input id="robotEspIp" type="text" placeholder="192.168.1.42" />
+        </label>
+        <label>
+          Agent ESP IP
+          <input id="agentEspIp" type="text" placeholder="192.168.1.43" />
+        </label>
+        <button id="saveTargetsButton" type="button">Save ESP IPs</button>
+        <button id="testTargetsButton" type="button">Test ESPs</button>
+        <label class="inline-check">
+          <input id="fallbackToggle" type="checkbox" />
+          Local fallback
+        </label>
+      </div>
       <p id="status">Disconnected</p>
     </header>
 
@@ -24,6 +40,19 @@
       <div>Robot: <strong id="robotScore">0</strong></div>
       <div>Agent: <strong id="agentScore">0</strong></div>
       <div>Ducks: <strong id="ducksLeft">-</strong></div>
+    </section>
+
+    <section class="agent-debug">
+      <h2>AI Agent</h2>
+      <div class="debug-grid">
+        <div>Status: <strong id="agentState">unknown</strong></div>
+        <div>Source: <strong id="agentSource">-</strong></div>
+        <div>Model: <strong id="agentModel">-</strong></div>
+        <div>Commands: <strong id="agentCommands">-</strong></div>
+      </div>
+      <p id="agentRationale">No agent status yet.</p>
+      <p id="agentError" class="error-line"></p>
+      <p id="agentHint" class="hint-line"></p>
     </section>
 
     <section class="layout">
@@ -39,10 +68,6 @@
           <button type="button" data-command="2">Back (B)</button>
           <button type="button" data-command="3">Left (L)</button>
           <button type="button" data-command="4">Right (R)</button>
-          <button type="button" data-command="10">Forward x2</button>
-          <button type="button" data-command="11">U-turn</button>
-          <button type="button" data-command="12">Step right</button>
-          <button type="button" data-command="13">Step left</button>
         </div>
         <div id="queue" class="queue"></div>
         <div class="queue-actions">

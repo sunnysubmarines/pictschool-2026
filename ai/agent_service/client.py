@@ -36,6 +36,17 @@ class BackendClient:
         except requests.RequestException as error:
             raise BackendApiError(message=str(error), status_code=0) from error
 
+    def start_round(self, scenario_id: str = "default") -> None:
+        try:
+            response = self._session.post(
+                f"{self.base_url}/api/round/start",
+                json={"scenarioId": scenario_id},
+                timeout=self.timeout_sec,
+            )
+            self._raise_if_error(response)
+        except requests.RequestException as error:
+            raise BackendApiError(message=str(error), status_code=0) from error
+
     def submit_turn(self, actor: str, commands: list[int]) -> TurnAcceptedResponse:
         payload = TurnCommandRequest(actor=actor, commands=commands)
         try:
@@ -46,6 +57,36 @@ class BackendClient:
             )
             self._raise_if_error(response)
             return TurnAcceptedResponse.model_validate(response.json())
+        except requests.RequestException as error:
+            raise BackendApiError(message=str(error), status_code=0) from error
+
+    def update_agent_status(
+        self,
+        *,
+        state: str,
+        actor: str,
+        source: str | None = None,
+        commands: list[int] | None = None,
+        rationale: str | None = None,
+        error: str | None = None,
+        model: str | None = None,
+    ) -> None:
+        payload = {
+            "state": state,
+            "actor": actor,
+            "source": source,
+            "commands": commands or [],
+            "rationale": rationale,
+            "error": error,
+            "model": model,
+        }
+        try:
+            response = self._session.post(
+                f"{self.base_url}/api/ai/agent/status",
+                json=payload,
+                timeout=self.timeout_sec,
+            )
+            self._raise_if_error(response)
         except requests.RequestException as error:
             raise BackendApiError(message=str(error), status_code=0) from error
 
@@ -73,4 +114,3 @@ class BackendClient:
             code=code,
             details=details,
         )
-

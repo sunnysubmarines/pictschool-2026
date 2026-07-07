@@ -18,7 +18,8 @@ int movement_is_supported_command(int command) {
            command == SCHOOL_CMD_FORWARD_TWICE ||
            command == SCHOOL_CMD_U_TURN ||
            command == SCHOOL_CMD_STEP_RIGHT ||
-           command == SCHOOL_CMD_STEP_LEFT;
+           command == SCHOOL_CMD_STEP_LEFT ||
+           command == SCHOOL_CMD_SQUARE;
 }
 
 int movement_expand_command(int command, int *platform_commands, int max_commands) {
@@ -55,6 +56,20 @@ int movement_expand_command(int command, int *platform_commands, int max_command
             const int commands[] = {PLATFORM_CMD_TURN_LEFT, PLATFORM_CMD_FORWARD, PLATFORM_CMD_TURN_RIGHT};
             return write_commands(platform_commands, max_commands, commands, 3);
         }
+        case SCHOOL_CMD_SQUARE: {
+            const int commands[] = {
+                PLATFORM_CMD_FORWARD,
+                PLATFORM_CMD_TURN_RIGHT,
+                PLATFORM_CMD_FORWARD,
+                PLATFORM_CMD_TURN_RIGHT,
+                PLATFORM_CMD_FORWARD,
+                PLATFORM_CMD_TURN_RIGHT,
+                PLATFORM_CMD_FORWARD,
+                PLATFORM_CMD_TURN_RIGHT
+            };
+            return write_commands(platform_commands, max_commands, commands, 8);
+        }
+
         default:
             return -1;
     }

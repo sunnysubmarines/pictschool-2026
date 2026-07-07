@@ -4,13 +4,16 @@ import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlin.concurrent.thread
 
 class RoundEngine(
     private val store: GameStore,
     private val tcpSender: TcpCommandSender,
-    private val config: AppConfig
+    private val config: AppConfig,
+    private val simulationTargets: SimulationTargets = SimulationTargets(config),
+    private val simulationFallbackSettings: SimulationFallbackSettings = SimulationFallbackSettings(config)
 ) {
-    private val allowedCommands = setOf(1, 2, 3, 4, 10, 11, 12, 13)
+    private val allowedCommands = setOf(1, 2, 3, 4)
 
     fun startRound(scenarioId: String?): Round {
         val round = Scenario.defaultRound(status = RoundStatus.RUNNING)
@@ -45,6 +48,7 @@ class RoundEngine(
 
         val forwardedAs = request.commands.joinToString(" ")
         val simulationRequest = SimulationCommandRequest(actor.wireName(), request.commands, round)
+        val simulationTarget = simulationTargets.forActor(actor.wireName())
         val submitted = store.append(
             "turn.submitted",
             round.turnNumber,
@@ -61,11 +65,29 @@ class RoundEngine(
             buildJsonObject {
                 put("actor", actor.wireName())
                 put("tcpPayload", forwardedAs)
-                put("host", config.simTcpHost)
-                put("port", config.simTcpCommandPort)
+                put("host", simulationTarget.host)
+                put("port", simulationTarget.port)
                 put("telemetryPort", config.simTcpTelemetryPort)
             }
         )
+
+        if (simulationFallbackSettings.isEnabled()) {
+            thread(name = "esp-command-${actor.wireName()}-${round.turnNumber}", isDaemon = true) {
+                tcpSender.send(simulationRequest)
+            }
+            store.append(
+                "simulation.fallback_used",
+                round.turnNumber,
+                actor,
+                buildJsonObject {
+                    put("cause", "local fallback enabled; ESP response is not awaited")
+                    put("mode", "local_movement_immediate")
+                }
+            )
+            val afterMove = LocalMovement.apply(round, actor, expandCommandsForLocalFallback(request.commands))
+            applyMovementResult(round, actor, afterMove)
+            return SubmitTurnResult.Accepted(submitted.id, forwardedAs)
+        }
 
         val tcpResult = tcpSender.send(simulationRequest)
         if (tcpResult.isFailure) {
@@ -94,6 +116,11 @@ class RoundEngine(
         }
 
         val afterMove = LocalMovement.applySimulationResult(round, actor, simulationResult)
+        applyMovementResult(round, actor, afterMove)
+        return SubmitTurnResult.Accepted(submitted.id, forwardedAs)
+    }
+
+    private fun applyMovementResult(round: Round, actor: ActorId, afterMove: MovementResult) {
         store.replace(afterMove.round)
         store.append(
             "actor.moved",
@@ -131,8 +158,6 @@ class RoundEngine(
                 }
             )
         }
-
-        return SubmitTurnResult.Accepted(submitted.id, forwardedAs)
     }
 
     private fun validateSimulationResult(result: SimulationCommandResult, actor: ActorId): String? {
@@ -149,6 +174,16 @@ class RoundEngine(
             return "Симуляция не вернула finalDirection."
         }
         return null
+    }
+
+    private fun expandCommandsForLocalFallback(commands: List<Int>): List<Int> = commands.flatMap { command ->
+        when (command) {
+            1 -> listOf(1)
+            2 -> listOf(2)
+            3 -> listOf(3)
+            4 -> listOf(4)
+            else -> emptyList()
+        }
     }
 
     private fun validate(round: Round, actor: ActorId, commands: List<Int>): ApiError? {

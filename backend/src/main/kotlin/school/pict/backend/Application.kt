@@ -32,8 +32,11 @@ fun main() {
 
 fun Application.backendModule(
     config: AppConfig = AppConfig.fromEnvironment(),
-    tcpSender: TcpCommandSender = SocketTcpCommandSender(config),
-    store: GameStore = GameStore()
+    simulationTargets: SimulationTargets = SimulationTargets(config),
+    tcpSender: TcpCommandSender = SocketTcpCommandSender(config, simulationTargets),
+    store: GameStore = GameStore(),
+    agentStatusStore: AgentStatusStore = AgentStatusStore(),
+    simulationFallbackSettings: SimulationFallbackSettings = SimulationFallbackSettings(config)
 ) {
     install(ContentNegotiation) {
         json(backendJson)
@@ -47,7 +50,7 @@ fun Application.backendModule(
         allowMethod(HttpMethod.Post)
     }
 
-    val engine = RoundEngine(store, tcpSender, config)
+    val engine = RoundEngine(store, tcpSender, config, simulationTargets, simulationFallbackSettings)
     val authService = if (config.authEnabled) AuthService(config) else null
 
     routing {
@@ -94,6 +97,33 @@ fun Application.backendModule(
             call.respond(RoundResponse(store.snapshot()))
         }
 
+        get("/api/simulation/targets") {
+            if (!call.requireAuth(authService)) return@get
+            call.respond(simulationTargets.snapshot())
+        }
+
+        post("/api/simulation/targets") {
+            if (!call.requireAuth(authService)) return@post
+            val request = call.receive<SimulationTargetsRequest>()
+            call.respond(simulationTargets.update(request))
+        }
+
+        get("/api/simulation/targets/check") {
+            if (!call.requireAuth(authService)) return@get
+            call.respond(simulationTargets.check(config.simTcpTimeoutMillis))
+        }
+
+        get("/api/simulation/fallback") {
+            if (!call.requireAuth(authService)) return@get
+            call.respond(simulationFallbackSettings.snapshot())
+        }
+
+        post("/api/simulation/fallback") {
+            if (!call.requireAuth(authService)) return@post
+            val request = call.receive<SimulationFallbackRequest>()
+            call.respond(simulationFallbackSettings.update(request))
+        }
+
         post("/api/round/start") {
             if (!call.requireAuth(authService)) return@post
             val request = runCatching { call.receive<StartRoundRequest>() }.getOrDefault(StartRoundRequest())
@@ -119,6 +149,17 @@ fun Application.backendModule(
         get("/api/events") {
             if (!call.requireAuth(authService)) return@get
             call.respond(EventsResponse(store.events()))
+        }
+
+        get("/api/ai/agent/status") {
+            if (!call.requireAuth(authService)) return@get
+            call.respond(agentStatusStore.snapshot())
+        }
+
+        post("/api/ai/agent/status") {
+            if (!call.requireAuth(authService)) return@post
+            val request = call.receive<AgentStatusUpdateRequest>()
+            call.respond(agentStatusStore.update(request))
         }
 
         get("/api/live") {

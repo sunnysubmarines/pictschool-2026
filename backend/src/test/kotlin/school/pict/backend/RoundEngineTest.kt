@@ -51,16 +51,17 @@ class RoundEngineTest {
     }
 
     @Test
-    fun `complex movement command is accepted and forwarded to simulation`() {
+    fun `complex movement commands are rejected`() {
         val sender = RecordingTcpSender()
         val store = GameStore()
         val engine = RoundEngine(store, sender, AppConfig())
 
         engine.startRound("default")
-        val result = engine.submitTurn(TurnCommandRequest("robot", listOf(10, 11, 12)))
+        val result = engine.submitTurn(TurnCommandRequest("robot", listOf(10)))
 
-        assertIs<SubmitTurnResult.Accepted>(result)
-        assertEquals(listOf(10, 11, 12), sender.requests.single().commands)
+        val rejected = assertIs<SubmitTurnResult.Rejected>(result)
+        assertEquals("unknown_command", rejected.error.code)
+        assertEquals(emptyList(), sender.requests)
     }
 
     @Test
@@ -77,6 +78,27 @@ class RoundEngineTest {
         assertEquals(listOf(listOf(1)), sender.requests.map { it.commands })
         assertEquals(ActorId.ROBOT, store.snapshot().activeActor)
         assertEquals("turn.failed", store.events().last().type)
+    }
+
+    @Test
+    fun `tcp failure can fall back to local movement and switch actor`() {
+        val sender = RecordingTcpSender(Result.failure(IllegalStateException("port closed")))
+        val store = GameStore()
+        val config = AppConfig(simFallbackOnError = true)
+        val engine = RoundEngine(
+            store,
+            sender,
+            config,
+            simulationFallbackSettings = SimulationFallbackSettings(config)
+        )
+
+        engine.startRound("default")
+        val result = engine.submitTurn(TurnCommandRequest("robot", listOf(1)))
+
+        assertIs<SubmitTurnResult.Accepted>(result)
+        assertEquals(ActorId.AGENT, store.snapshot().activeActor)
+        assertEquals("simulation.fallback_used", store.events().first { it.type == "simulation.fallback_used" }.type)
+        assertEquals("actor.moved", store.events().first { it.type == "actor.moved" }.type)
     }
 
     @Test
